@@ -1,0 +1,132 @@
+schema_version = 1
+
+# ─── LLM Clients ──────────────────────────────────────────────────────────────
+[llm_clients.bedrock]
+format      = "openai_chat"
+base_url    = "https://bedrock-mantle.us-east-1.api.aws/v1"
+api_key_env = "BEDROCK_API_KEY"
+
+[llm_clients.bedrock-openai]
+format      = "openai_chat"
+base_url    = "https://bedrock-mantle.us-east-1.api.aws/openai/v1"
+api_key_env = "BEDROCK_API_KEY"
+
+# ─── Targets ──────────────────────────────────────────────────────────────────
+# Tier 1 – Fast & cheap. Handles simple tickets.
+[targets.nano]
+id         = "nvidia.nemotron-nano-3-30b"
+llm_client = "bedrock"
+
+# Tier 2 – Mid-tier. Moderate complexity tickets.
+[targets.super]
+id         = "nvidia.nemotron-super-3-120b"
+llm_client = "bedrock"
+
+# Tier 3 – Most capable. Complex, high-risk tickets.
+[targets.sol]
+id         = "openai.gpt-5.6-sol"
+llm_client = "bedrock-openai"
+
+# ─── Routes ───────────────────────────────────────────────────────────────────
+
+# Route 1: LLM Classifier — Nano judges upfront, routes to Nano or Sol
+[routes.support-triage-classifier]
+id                = "support-triage-classifier"
+type              = "llm_classifier"
+mode              = "custom"
+default_target    = "sol"
+classify_trigger  = "user_turn"
+prompt            = """
+Route this support ticket. Answer nano unless the customer reports one of these, then answer sol:
+- fraud or a security problem: account takeover, charges or changes they did not make, exposed personal data
+- data loss or an outage
+- a legal threat, a chargeback, or an urgent deadline with money at risk
+
+A double charge on the customer's own order is routine billing: answer nano.
+
+Return JSON matching the response schema supplied with the request.
+"""
+response_schema   = '''
+{
+  "type": "object",
+  "properties": {
+    "decision": {
+      "type": "object",
+      "properties": {
+        "target": {
+          "type": "string",
+          "enum": ["nano", "sol"]
+        }
+      },
+      "required": ["target"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["decision"],
+  "additionalProperties": false
+}
+'''
+
+[routes.support-triage-classifier.models]
+judge = ["nano"]
+nano  = ["nano"]
+sol   = ["sol"]
+any   = ["nano", "sol"]
+
+[routes.support-triage-classifier.policy]
+type     = "target_selector"
+selector = "/decision/target"
+
+# Route 2: Custom 3-tier — Nano judges upfront, routes to Nano / Super / Sol
+[routes.support-triage-3tier]
+id                = "support-triage-3tier"
+type              = "llm_classifier"
+mode              = "custom"
+default_target    = "sol"
+classify_trigger  = "user_turn"
+prompt            = """
+You are a support ticket routing agent. Based on the complexity and urgency of the support ticket, choose the most appropriate model tier.
+
+- nano: simple, routine requests (password resets, account info lookups, basic how-to questions, status checks)
+- super: moderate complexity (billing disputes, multi-step troubleshooting, policy questions, account changes)
+- sol: high complexity or high urgency (security incidents, data loss, critical system failures, legal/compliance issues, frustrated VIP customers)
+
+Return JSON matching the response schema supplied with the request.
+"""
+response_schema   = '''
+{
+  "type": "object",
+  "properties": {
+    "decision": {
+      "type": "object",
+      "properties": {
+        "target": {
+          "type": "string",
+          "enum": ["nano", "super", "sol"]
+        }
+      },
+      "required": ["target"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["decision"],
+  "additionalProperties": false
+}
+'''
+
+[routes.support-triage-3tier.models]
+judge = ["nano"]
+nano  = ["nano"]
+super = ["super"]
+sol   = ["sol"]
+any   = ["nano", "super", "sol"]
+
+[routes.support-triage-3tier.policy]
+type     = "target_selector"
+selector = "/decision/target"
+
+# Route 3: Passthrough — all tickets go to Sol (baseline for cost comparison)
+[routes.baseline]
+id     = "baseline"
+type   = "passthrough"
+target = "sol"

@@ -1,0 +1,14 @@
+# Switchyard on Lambda via Lambda Web Adapter
+FROM rust:latest AS builder
+# Pinned: switchyard.toml's schema changes between upstream commits. Test the config before bumping.
+ARG SWITCHYARD_REV=a601a9a3f9db149a1ad430fa43b1463a170c8a82
+RUN cargo install --git https://github.com/NVIDIA-NeMo/Switchyard --rev ${SWITCHYARD_REV} switchyard-server
+
+FROM ubuntu:24.04
+COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:0.9.0 /lambda-adapter /opt/extensions/lambda-adapter
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /usr/local/cargo/bin/switchyard-server /usr/local/bin/
+COPY switchyard.toml /app/switchyard.toml
+ENV AWS_LAMBDA_EXEC_WRAPPER=/opt/extensions/lambda-adapter
+ENV PORT=8080
+ENTRYPOINT ["switchyard-server", "--config", "/app/switchyard.toml", "--port", "8080"]

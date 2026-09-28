@@ -1,0 +1,9 @@
+Third-party data
+
+data/tickets.json is derived from the Bitext Customer Support LLM Chatbot
+Training Dataset, (c) Bitext Innovations, 2024.
+https://huggingface.co/datasets/bitext/Bitext-customer-support-llm-chatbot-training-dataset
+
+The dataset and data/tickets.json are licensed under the Community Data License
+Agreement – Sharing, Version 1.0 (CDLA-Sharing-1.0):
+https://cdla.dev/sharing-1-0/
