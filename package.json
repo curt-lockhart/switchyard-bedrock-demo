@@ -18,6 +18,8 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@aws-sdk/credential-providers": "^3.1167.0",
+    "@aws/bedrock-token-generator": "^1.1.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
