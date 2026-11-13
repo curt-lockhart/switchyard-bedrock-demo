@@ -19,12 +19,12 @@ const STORY: Record<string, { label: string; idea: string; why: string }> = {
   "support-triage-classifier": {
     label: "LLM Classifier",
     idea: "Cheap by default, escalate on risk.",
-    why: "Nano answers every ticket unless the judge spots a specific red flag: fraud, a security problem, data loss, an outage, a legal threat, a chargeback or an urgent deadline with money at risk. Those go to Sol.",
+    why: "Nano answers every ticket unless the judge spots a specific red flag: fraud, a security problem, data loss, an outage, a legal threat, a chargeback, an urgent deadline with money at risk, or an enterprise customer who can't work. Those go to Sol.",
   },
   "support-triage-3tier": {
     label: "3-Tier Custom",
-    idea: "Pick a tier by complexity.",
-    why: "The same mechanism with three answers instead of two. The judge places each ticket on a scale: routine for Nano, moderate for Super, high-stakes for Sol.",
+    idea: "Three tiers, picked by rules.",
+    why: "The same mechanism with three answers instead of two. The judge applies the first rule that fits: risky tickets and blocked enterprise customers to Sol, blocked or broken to Super, questions and simple changes to Nano.",
   },
   baseline: {
     label: "Baseline (Sol Only)",
@@ -82,18 +82,18 @@ const Arrow = ({ label }: { label?: string }) => (
   </div>
 );
 
-function FlowDiagram() {
+function FlowDiagram({ judge }: { judge: string }) {
   return (
     <div className="rounded-xl border border-gray-800 bg-[#0d0d0d] p-6 overflow-x-auto">
       <div className="flex items-stretch gap-2 min-w-[880px]">
-        <Box where="Your laptop" title="Demo app" sub="Next.js, sends the ticket with model = route name" className="w-44" />
+        <Box where="Your laptop" title="Demo app" sub="Next.js, sends the ticket (with customer tier) and model = route name" className="w-44" />
         <Arrow label="Lambda Invoke, your AWS login" />
         <div className="rounded-lg border border-[#76b900]/40 bg-[#76b900]/5 px-4 py-3 w-64">
           <p className="text-[10px] uppercase tracking-wider text-gray-600">AWS Lambda</p>
           <p className="text-sm font-medium text-[#76b900] mt-0.5">Switchyard</p>
           <p className="text-xs text-gray-500 mt-0.5">Looks up the route in switchyard.toml</p>
           <div className="mt-3 rounded border border-gray-800 bg-[#111] px-3 py-2">
-            <p className="text-xs text-gray-300">Judge call to <span className="text-[#76b900]">Nano</span></p>
+            <p className="text-xs text-gray-300">Judge call to <span className={tier(judge)?.text ?? "text-gray-200"}>{tier(judge)?.model ?? judge}</span></p>
             <p className="text-[11px] text-gray-500">&ldquo;Which tier should handle this ticket?&rdquo; Answer must match a JSON schema.</p>
           </div>
         </div>
@@ -246,6 +246,8 @@ function ModesTable() {
 
 export default function HowItWorksPage() {
   const config = loadSwitchyardConfig();
+  // The judge shown in the flow diagram: the first classifier route's judge.
+  const judge = config.routes.find((r) => r.models.judge)?.models.judge?.[0] ?? "judge";
   const routesForTrace = config.routes.map(({ id, type, answers, models, passthroughTarget }) => ({ id, type, answers, models, passthroughTarget }));
 
   return (
@@ -264,13 +266,34 @@ export default function HowItWorksPage() {
         <CostTiles />
 
         <Section title="How a ticket flows" subtitle="The app never picks a model. It names a route, and Switchyard does the rest.">
-          <FlowDiagram />
+          <FlowDiagram judge={judge} />
         </Section>
 
         <Section title="What happened to your last ticket" subtitle="Step by step, for the most recent ticket on the Demo tab.">
           <div className="rounded-xl border border-gray-800 bg-[#111] p-5">
             <LastTicketTrace routes={routesForTrace} targets={config.targets} />
           </div>
+        </Section>
+
+        <Section
+          title="Customer tier is part of the rule, not a shortcut"
+          subtitle="The tier is sent to the judge as one line of the ticket. The prompts say exactly when it matters."
+        >
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+            {[
+              { t: "Same problem, enterprise", d: "An enterprise customer who can't log in is escalated to Sol: they are blocked, and they are the account you can least afford to keep waiting." },
+              { t: "Same problem, standard", d: "A standard customer with the same login problem stays on Nano with the LLM Classifier, or goes to Super with 3-Tier." },
+              { t: "Routine question, enterprise", d: "An enterprise customer asking about payment methods stays on Nano. The tier alone never escalates a ticket." },
+            ].map((c) => (
+              <div key={c.t} className="rounded-xl border border-gray-800 bg-[#111] p-4">
+                <p className="font-medium text-gray-200">{c.t}</p>
+                <p className="text-gray-400 mt-1">{c.d}</p>
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-gray-600">
+            Try it on the Demo tab with the &ldquo;Can&apos;t log in&rdquo; sample: run it as Standard, then switch the tier to Enterprise.
+          </p>
         </Section>
 
         <Section

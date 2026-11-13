@@ -38,12 +38,12 @@ const ROUTES = [
   {
     id: "support-triage-classifier",
     label: "LLM Classifier",
-    description: "Switchyard uses Nano to score the ticket, then routes to Nano (simple) or Sol (complex) — one call from your app",
+    description: "Nemotron Super judges the ticket: routine goes to Nano, risky (fraud, data loss, legal, money at risk, or an enterprise customer who is blocked) goes to Sol — one call from your app",
   },
   {
     id: "support-triage-3tier",
     label: "3-Tier Custom",
-    description: "Nano judges the ticket and picks Nano / Super / Sol based on complexity — three models, one call from your app",
+    description: "Nemotron Super judges the ticket by rules: questions go to Nano, blocked or broken to Super, risky or enterprise-blocked to Sol — three models, one call from your app",
   },
   {
     id: "baseline",
@@ -73,6 +73,13 @@ const SAMPLE_TICKETS = [
     subject: "Charged twice this month",
     body: "I noticed two charges for my subscription this month — one on the 1st and another on the 5th. Invoice number INV-8832. I need the duplicate refunded as soon as possible.",
     customerTier: "pro",
+  },
+  {
+    id: "s6",
+    label: "Can't log in (try the tier)",
+    subject: "Can't log in to my account",
+    body: "I forgot my password and the reset email never arrives, so I can't log in to my account. I've checked my spam folder and tried twice.",
+    customerTier: "standard",
   },
   {
     id: "s4",
@@ -338,6 +345,9 @@ export default function DemoPage() {
                   <option value="pro">Pro</option>
                   <option value="enterprise">Enterprise</option>
                 </select>
+                <p className="mt-1.5 text-xs text-gray-600">
+                  Routing rule: an enterprise customer who can&apos;t work or use the product goes to Sol. The tier alone never escalates a routine question.
+                </p>
               </div>
 
               <button

@@ -99,8 +99,8 @@ Pick a strategy in the UI. No code or config change is needed.
 
 | Route | How it works |
 |---|---|
-| `support-triage-classifier` (LLM Classifier) | Nano reads the ticket and answers `nano` or `sol`. Routine tickets go to Nano. Security, fraud, data loss, outages, legal threats and urgent money-at-risk tickets go to Sol. |
-| `support-triage-3tier` (3-Tier Custom) | Nano reads the ticket and picks Nano, Super or Sol by complexity. |
+| `support-triage-classifier` (LLM Classifier) | Super reads the ticket and answers `nano` or `sol`. Routine tickets go to Nano. Fraud, security problems, data loss, outages, legal threats, chargebacks, urgent money-at-risk tickets, and enterprise customers who are blocked go to Sol. |
+| `support-triage-3tier` (3-Tier Custom) | Super reads the ticket and applies numbered rules: the same Sol triggers, then Super for customers who are blocked or have something broken, then Nano for everything else. |
 | `baseline` (Sol Only) | Every ticket goes to Sol. Use it to compare costs against the other strategies. |
 
 Both classifiers use Switchyard's custom classifier mode. The judge prompt and the allowed answers are in [`switchyard.toml`](./switchyard.toml). If the judge's answer cannot be parsed, the ticket goes to Sol.
@@ -109,17 +109,25 @@ This demo uses custom mode rather than Switchyard's capability mode (`mode = "ca
 
 ### What to expect from the sample tickets
 
-These are the results from the five sample tickets on the main page:
+These are the results from the sample tickets on the main page, each run at least 3 times:
 
 | Sample ticket | LLM Classifier | 3-Tier Custom | Baseline |
 |---|---|---|---|
-| Order tracking | Nano | Super | Sol |
+| Order tracking | Nano | Nano | Sol |
 | Payment methods | Nano | Nano | Sol |
 | Double charge | Nano | Super | Sol |
-| Account locked (urgent deadline) | Sol | Sol | Sol |
+| Can't log in, as Standard | Nano | Super | Sol |
+| Can't log in, as Enterprise | Sol | Sol | Sol |
+| Account locked (urgent deadline) | usually Sol | Super | Sol |
 | Security breach | Sol | Sol | Sol |
 
-Nano makes each routing decision fresh, so a borderline ticket can occasionally route differently between runs.
+### Customer tier
+
+The customer tier is sent to the judge as one line of the ticket (`Customer Tier: enterprise`). Both judge prompts contain one rule that uses it: an **enterprise customer who is blocked** (cannot log in, cannot work or cannot use the product) goes to Sol. The tier alone never escalates a ticket: an enterprise customer asking about payment methods stays on Nano. The triage prompt also makes these tickets at least P1.
+
+To show it live, run the "Can't log in" sample as Standard, then switch the tier to Enterprise and run it again. In testing this flipped 4 out of 4 times on both classifier routes (Nano → Sol, and Super → Sol).
+
+The judge makes each routing decision fresh, so a borderline ticket can occasionally route differently between runs.
 
 The bulk view's 20 tickets are 16 routine Bitext tickets, dealt in turn from its simple, medium and complex intents, plus 4 hand-written high-risk tickets at positions 3, 8, 13 and 18: an account takeover, data loss after an update, a chargeback and legal threat, and a payroll deadline with money at risk ([`data/escalation-tickets.json`](./data/escalation-tickets.json)). Bitext has almost no tickets like these, so without them every route looks the same. A 5-ticket run includes 1 of them, a 10-ticket run 2.
 
@@ -127,10 +135,11 @@ In a 20-ticket bulk run:
 
 | Route | Nano | Super | Sol | Total cost | vs Sol only |
 |---|---|---|---|---|---|
-| LLM Classifier | 16 | – | 4 | $0.0152 | 77% cheaper |
-| Baseline (Sol Only) | – | – | 20 | $0.0633 | – |
+| LLM Classifier | 16 | – | 4 | $0.0153 | 79% cheaper |
+| 3-Tier Custom | 14 | 2 | 4 | $0.0147 | 79% cheaper |
+| Baseline (Sol Only) | – | – | 20 | $0.0674 | – |
 
-The LLM Classifier sent exactly the 4 high-risk tickets to Sol and every routine ticket to Nano. The 3-Tier Custom route varies much more between runs (in this run it sent most routine tickets to Super and several to Sol), because its prompt describes complexity tiers rather than specific risks; see [Changing the routing config](#changing-the-routing-config).
+Both classifier routes sent exactly the 4 high-risk tickets to Sol.
 
 The **How it works** tab (`/how-it-works`) explains the flow and the three strategies for an audience. It shows the judge prompts and route config read live from the local `switchyard.toml`, and traces the last ticket triaged on the Demo tab step by step. The traced cost covers the answering model only: Switchyard's reported token usage does not include the judge call.
 
@@ -143,9 +152,12 @@ The Lambda uses the copy of [`switchyard.toml`](./switchyard.toml) from its last
 npm run doctor
 ```
 
-To tune the LLM Classifier, edit the `prompt` under `[routes.support-triage-classifier]`, then redeploy and run the sample tickets again. Rules that worked well in testing:
+To tune a classifier, edit its `prompt` under `[routes.<route>]`, then redeploy and run the sample tickets again, several times each. Rules that worked well in testing:
 
 - Make Nano the default, and give Sol a short, specific list of triggers.
+- Write the triggers as numbered rules, and put conditional rules first. For 3-Tier, "use the first rule that applies" keeps a ticket that matches a Sol rule from being caught by a broader Super rule.
+- Use Super as the judge (`judge = ["super"]` under `[routes.<route>.models]`) when a rule combines conditions, such as "enterprise AND blocked". With Nano as the judge, that rule was ignored or applied to every tier, and 3-Tier sent routine tickets to Super and Sol. A judge call is a few output tokens, so Super adds a fraction of a cent per ticket.
+- Check that sample tickets do not accidentally match another rule. "I can't use the product at all" read as an outage and went to Sol for every tier.
 - Spell out close calls. For example, a double charge on the customer's own order is routine billing for Nano, while charges the customer never made are fraud for Sol.
 - Keep it short. A 215-word version that also listed routine topics and told Nano to ignore typos and swearing routed about the same as the current 77-word prompt.
 
@@ -214,7 +226,8 @@ aws lambda delete-function-url-config --function-name switchyard-demo-proxy --re
 - **Auth**: a Bedrock API key as a bearer token. No SigV4 signing on the Mantle side.
 - **Sol limitations**: does not accept `temperature` or `max_tokens`
 - **Sol pricing**: short context (<272k tokens) $4.40/$22.00, long context (1M) $8.80/$33.00 per 1M tokens
-- **Nano as a judge**: in testing, setting `temperature = 0` did not make routing more consistent, and one response was not valid JSON. Use the default temperature.
+- **Judge temperature**: with Nano as the judge, setting `temperature = 0` did not make routing more consistent, and one response was not valid JSON. Use the default temperature.
+- **Judge cost**: Switchyard's reported token usage covers the answering model only, so the app's cost figures do not include the judge call.
 
 ## License
 

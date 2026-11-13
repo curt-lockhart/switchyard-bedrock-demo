@@ -145,6 +145,7 @@ const SYSTEM_PROMPT = `You are a support ticket triage assistant. Classify the i
 }
 
 Priority guide: P0=critical outage/legal/security, P1=major issue blocking user, P2=standard support, P3=general inquiry.
+An enterprise customer who cannot work or cannot use the product is at least P1.
 Set needs_human=true for P0/P1 or confidence < 0.7.
 Respond ONLY with the JSON object, no markdown.`;
 
