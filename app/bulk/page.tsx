@@ -71,6 +71,7 @@ export default function BulkPage() {
   const [running,  setRunning]  = useState(false);
   const [results,  setResults]  = useState<BulkResult[]>([]);
   const [total,    setTotal]    = useState(0);
+  const [tickets,  setTickets]  = useState<Ticket[]>([]);
 
   const runBatch = useCallback(async () => {
     setRunning(true);
@@ -80,6 +81,7 @@ export default function BulkPage() {
     const ticketsRes = await fetch("/api/tickets");
     const allTickets: Ticket[] = await ticketsRes.json();
     const tickets = allTickets.slice(0, limit);
+    setTickets(tickets);
     setTotal(tickets.length);
 
     const res = await fetch("/api/triage/bulk", {
@@ -311,8 +313,8 @@ export default function BulkPage() {
                   return (
                     <tr key={i} className="border-b border-gray-900 hover:bg-gray-900/40 transition-colors">
                       <td className="px-4 py-3 text-gray-600 tabular-nums">{i + 1}</td>
-                      <td className="px-4 py-3 text-gray-300 max-w-xs truncate" title={r.decision?.category}>
-                        —
+                      <td className="px-4 py-3 text-gray-300 max-w-xs truncate" title={tickets[i]?.subject}>
+                        {tickets[i]?.subject ?? "—"}
                       </td>
                       <td className="px-4 py-3">
                         <span className={`text-xs font-medium ${TIER_COLORS[tier]}`}>

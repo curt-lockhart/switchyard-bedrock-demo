@@ -119,7 +119,15 @@ These are the results from the five sample tickets on the main page:
 | Account locked (urgent deadline) | Sol | Sol | Sol |
 | Security breach | Sol | Sol | Sol |
 
-Nano makes each routing decision fresh, so a borderline ticket can occasionally route differently between runs. In a 20-ticket bulk run on the LLM Classifier, 17 went to Nano and 3 to Sol, for about $0.013 in total.
+Nano makes each routing decision fresh, so a borderline ticket can occasionally route differently between runs. In a 20-ticket bulk run:
+
+| Route | Nano | Super | Sol | Total cost | vs Sol only |
+|---|---|---|---|---|---|
+| LLM Classifier | 18 | – | 2 | $0.0063 | 90% cheaper |
+| 3-Tier Custom | 9 | 9 | 2 | $0.0065 | 90% cheaper |
+| Baseline (Sol Only) | – | – | 20 | $0.0541 | – |
+
+The bulk tickets are routine requests (invoices, payment methods, order tracking, refund policy), so the occasional Sol pick on these is the judge being cautious, not a ticket that needs Sol.
 
 ## Changing the routing config
 
@@ -189,7 +197,7 @@ aws lambda delete-function-url-config --function-name switchyard-demo-proxy --re
 | [`lib/switchyard/client.ts`](./lib/switchyard/client.ts) | Invokes the Lambda through the OpenAI SDK and turns failures into readable errors |
 | [`app/page.tsx`](./app/page.tsx) | Single-ticket demo UI with sample tickets |
 | [`app/bulk/page.tsx`](./app/bulk/page.tsx) | Bulk triage UI with cost comparison |
-| [`data/tickets.json`](./data/tickets.json) | Tickets for the bulk view, from the Bitext customer support dataset (CDLA-Sharing-1.0, see [`NOTICE`](./NOTICE)) |
+| [`data/tickets.json`](./data/tickets.json) | Tickets for the bulk view: the customer messages from the Bitext customer support dataset, with a subject per intent and sample values for its `{{placeholders}}` (CDLA-Sharing-1.0, see [`NOTICE`](./NOTICE)) |
 
 ## Bedrock Mantle notes
 
