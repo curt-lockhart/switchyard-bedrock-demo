@@ -13,7 +13,7 @@ Next.js app  (runs locally: npm run dev)
   ▼
 AWS Lambda  (switchyard-demo-proxy, us-east-1)
   └─ Switchyard + Lambda Web Adapter, config from switchyard.toml
-       │  Bedrock Mantle (OpenAI-compatible), Bedrock API key from Secrets Manager
+       │  Bedrock Mantle (OpenAI-compatible), short-term Bedrock token from your AWS credentials
        ├─ Nano ──► nvidia.nemotron-nano-3-30b    $0.06/$0.24 /1M
        ├─ Super ► nvidia.nemotron-super-3-120b   $0.15/$0.65 /1M
        └─ Sol ──► openai.gpt-5.6-sol             $4.40/$22.00 /1M
@@ -22,7 +22,7 @@ AWS Lambda  (switchyard-demo-proxy, us-east-1)
 Two credentials are involved, and they do different jobs:
 
 - **Your AWS login** lets the app on your laptop invoke the Lambda. The app calls the Lambda with the AWS SDK rather than a Function URL. This keeps the function private and works in AWS organizations whose service control policies (SCPs) block Function URLs.
-- **The Bedrock API key** lets Switchyard, inside the Lambda, call the models. It lives in Secrets Manager and is copied into the Lambda at deploy time. The app never sees it, and nothing reads the `AWS_BEARER_TOKEN_BEDROCK` environment variable.
+- **A short-term Bedrock token** lets Switchyard, inside the Lambda, call the models. The deploy scripts generate it from your AWS credentials with [`@aws/bedrock-token-generator`](https://www.npmjs.com/package/@aws/bedrock-token-generator) (STS-based, no long-term key) and set it as a Lambda environment variable. It is valid for 12 hours, or until the AWS session that signed it ends if that is sooner, so refresh it before each demo day. The app never sees it, and nothing reads the `AWS_BEARER_TOKEN_BEDROCK` environment variable.
 
 ## Before you start
 
@@ -30,8 +30,9 @@ You need:
 
 - An AWS account with Bedrock Mantle access and model access for Nemotron Nano 30B, Nemotron Super 120B and GPT-5.6 Sol.
 - AWS CLI, Docker Desktop (running), and Node.js 20+.
-- An AWS SSO profile for that account, with permission to use Lambda, ECR, IAM and Secrets Manager. See [Choosing an AWS profile](#choosing-an-aws-profile).
-- A **long-term** Bedrock API key. In the AWS console, go to Amazon Bedrock > API keys > Long-term API keys. Long-term keys start with `ABSK`. Short-term keys start with `bedrock-api-key-`, expire within 12 hours, and work only in the region the console was set to when they were created, so they need replacing often. The demo uses us-east-1.
+- An AWS profile for that account (SSO or `credential_process`), with permission to use Lambda, ECR and IAM, and to call the three models on Bedrock. See [Choosing an AWS profile](#choosing-an-aws-profile).
+
+No Bedrock API key is needed. The scripts sign a short-term token with your AWS credentials, so the token has your identity's Bedrock permissions.
 
 ### Choosing an AWS profile
 
@@ -55,8 +56,8 @@ The script:
 
 1. Checks that the AWS CLI, Docker and Node.js 20+ are installed and that you are logged in to AWS.
 2. Runs `npm install`.
-3. Asks for your Bedrock API key. Paste it and press Enter. Each character shows as `*`. The script prints the key's length, sends one test request to Bedrock, and stores the key in Secrets Manager only if Bedrock accepts it.
-4. Builds Switchyard and deploys it to Lambda. The first build takes several minutes.
+3. Generates a short-term Bedrock token from your AWS credentials and sends one test request to Bedrock with it. If Bedrock rejects it, the script stops before building.
+4. Builds Switchyard for your machine's architecture and deploys it to Lambda with the token. The first build takes several minutes. See [Build architecture](#build-architecture).
 5. Writes `.env.local` with your profile.
 6. Runs `npm run doctor`, which sends a test ticket.
 
@@ -65,6 +66,17 @@ It is safe to re-run. Then start the app and open http://localhost:3000:
 ```bash
 npm run dev
 ```
+
+### Build architecture
+
+`lambda-deploy.sh` builds the image for the architecture of the machine running Docker, so Switchyard's Rust code compiles natively instead of under emulation, and runs the Lambda on the same architecture:
+
+| Build machine | Image | Lambda |
+|---|---|---|
+| Apple Silicon Mac, Graviton | `linux/arm64` | `arm64` |
+| Intel/AMD (x86) | `linux/amd64` | `x86_64` |
+
+To force one, set `LAMBDA_ARCH=arm64` or `LAMBDA_ARCH=x86_64` before running the script. If people on different machines deploy to the same account, the Lambda switches architecture with each deploy. That is harmless.
 
 ### .env.local
 
@@ -80,18 +92,21 @@ Restart `npm run dev` after editing `.env.local`.
 ## Each time you demo
 
 ```bash
-aws sso login --profile <your-profile>
-npm run doctor
+aws sso login --profile <your-profile>     # skip for credential_process profiles
+export AWS_PROFILE=<your-profile>
+./scripts/setup.sh --refresh-token         # new 12-hour token on the Lambda, then runs npm run doctor
 npm run dev
 ```
 
-## Replacing the Bedrock API key
+Refresh shortly before the demo, not the day before: the token cannot outlive the AWS session that signed it. `npm run doctor` shows how long the current token has left and warns when it is under 3 hours.
+
+## Refreshing the Bedrock token
 
 ```bash
-./scripts/setup.sh --new-key
+./scripts/setup.sh --refresh-token
 ```
 
-This tests the new key, stores it, and redeploys the Lambda so it uses the key. If Bedrock rejects the key, nothing is stored and the current key stays in place.
+This generates a token from your current AWS credentials, tests it, and updates only the Lambda's environment. It takes a few seconds and does not need Docker. `./scripts/lambda-deploy.sh` also puts a fresh token on the Lambda every time it deploys.
 
 ## Routing strategies
 
@@ -156,8 +171,8 @@ It checks your AWS credentials the same way the app does, confirms the Lambda is
 | "Lambda does not exist in this profile's AWS account" | `AWS_PROFILE` points at a different account from the one you deployed to | Fix `AWS_PROFILE` in `.env.local`, or run `./scripts/setup.sh` |
 | "Lambda is still applying a deploy" | A deploy finished moments ago | Wait a minute and run `npm run doctor` again |
 | "Switchyard Lambda failed" or "crashed on startup" | `switchyard.toml` does not load | `aws logs tail /aws/lambda/switchyard-demo-proxy --since 10m` shows the config error |
-| "Bedrock rejected the API key" | Key expired or revoked, or a short-term key from another region | `./scripts/setup.sh --new-key` with a long-term key |
-| `setup.sh` says "Bedrock rejected the key (HTTP 401)" | The key is incomplete, from another AWS account, or a short-term key from another region | Create a long-term key in this account and try again |
+| "Bedrock token on the Lambda expired" or "Bedrock rejected the token" | The token is older than 12 hours, or the AWS session that signed it ended | `./scripts/setup.sh --refresh-token` |
+| Token generation fails with HTTP 403 | Your AWS identity is not allowed to call the models | Check your IAM permissions and Bedrock model access in us-east-1 |
 | Routing ignores your `switchyard.toml` changes | The Lambda still runs the last deployed config | `./scripts/lambda-deploy.sh` |
 
 ## Tearing down
@@ -165,7 +180,7 @@ It checks your AWS credentials the same way the app does, confirms the Lambda is
 ```bash
 aws lambda delete-function --function-name switchyard-demo-proxy --region us-east-1
 aws ecr delete-repository --repository-name switchyard-demo/switchyard --force --region us-east-1
-aws secretsmanager delete-secret --secret-id switchyard-demo/bedrock-api-key --region us-east-1
+aws logs delete-log-group --log-group-name /aws/lambda/switchyard-demo-proxy --region us-east-1
 aws iam detach-role-policy --role-name switchyard-demo-lambda-role \
   --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
 aws iam delete-role --role-name switchyard-demo-lambda-role
@@ -181,9 +196,10 @@ aws lambda delete-function-url-config --function-name switchyard-demo-proxy --re
 
 | File | Purpose |
 |---|---|
-| [`scripts/setup.sh`](./scripts/setup.sh) | One-time setup and deploy. `--new-key` replaces the Bedrock API key. |
+| [`scripts/setup.sh`](./scripts/setup.sh) | One-time setup and deploy. `--refresh-token` puts a fresh Bedrock token on the Lambda. |
+| [`scripts/bedrock-token.mjs`](./scripts/bedrock-token.mjs) | Generates and tests a short-term Bedrock token from your AWS credentials |
 | [`scripts/doctor.mjs`](./scripts/doctor.mjs) | Diagnoses credential, Lambda and API key problems (`npm run doctor`) |
-| [`scripts/lambda-deploy.sh`](./scripts/lambda-deploy.sh) | Build, push to ECR, deploy to Lambda |
+| [`scripts/lambda-deploy.sh`](./scripts/lambda-deploy.sh) | Build, push to ECR, deploy to Lambda. `--token-only` updates just the token. |
 | [`switchyard.toml`](./switchyard.toml) | Routing config: LLM clients, targets, routes and judge prompts |
 | [`Dockerfile.lambda`](./Dockerfile.lambda) | Switchyard (pinned version) + Lambda Web Adapter image |
 | [`lib/switchyard/client.ts`](./lib/switchyard/client.ts) | Invokes the Lambda through the OpenAI SDK and turns failures into readable errors |
@@ -195,7 +211,7 @@ aws lambda delete-function-url-config --function-name switchyard-demo-proxy --re
 
 - **Base URL**: `https://bedrock-mantle.us-east-1.api.aws/v1` for most models
 - **Sol uses a different path**: `https://bedrock-mantle.us-east-1.api.aws/openai/v1`
-- **Auth**: a Bedrock API key as a bearer token. No SigV4 signing on the Mantle side.
+- **Auth**: a Bedrock API key as a bearer token. No SigV4 signing on the Mantle side. Short-term tokens from `@aws/bedrock-token-generator` work for all three models.
 - **Sol limitations**: does not accept `temperature` or `max_tokens`
 - **Sol pricing**: short context (<272k tokens) $4.40/$22.00, long context (1M) $8.80/$33.00 per 1M tokens
 - **Nano as a judge**: in testing, setting `temperature = 0` did not make routing more consistent, and one response was not valid JSON. Use the default temperature.
