@@ -122,7 +122,7 @@ export interface TriageWithMeta {
 }
 
 // Token cost table (USD per 1M tokens, Bedrock on-demand us-east-1)
-const COST_PER_1M: Record<string, { input: number; output: number }> = {
+export const COST_PER_1M: Record<string, { input: number; output: number }> = {
   "nvidia.nemotron-nano-3-30b":   { input:  0.06, output:  0.24 },
   "nvidia.nemotron-super-3-120b": { input:  0.15, output:  0.65 },
   "openai.gpt-5.6-sol":           { input:  4.40, output: 22.00 },

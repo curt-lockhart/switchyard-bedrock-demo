@@ -119,15 +119,20 @@ These are the results from the five sample tickets on the main page:
 | Account locked (urgent deadline) | Sol | Sol | Sol |
 | Security breach | Sol | Sol | Sol |
 
-Nano makes each routing decision fresh, so a borderline ticket can occasionally route differently between runs. In a 20-ticket bulk run:
+Nano makes each routing decision fresh, so a borderline ticket can occasionally route differently between runs.
+
+The bulk view's 20 tickets are 16 routine Bitext tickets, dealt in turn from its simple, medium and complex intents, plus 4 hand-written high-risk tickets at positions 3, 8, 13 and 18: an account takeover, data loss after an update, a chargeback and legal threat, and a payroll deadline with money at risk ([`data/escalation-tickets.json`](./data/escalation-tickets.json)). Bitext has almost no tickets like these, so without them every route looks the same. A 5-ticket run includes 1 of them, a 10-ticket run 2.
+
+In a 20-ticket bulk run:
 
 | Route | Nano | Super | Sol | Total cost | vs Sol only |
 |---|---|---|---|---|---|
-| LLM Classifier | 18 | – | 2 | $0.0063 | 90% cheaper |
-| 3-Tier Custom | 9 | 9 | 2 | $0.0065 | 90% cheaper |
-| Baseline (Sol Only) | – | – | 20 | $0.0541 | – |
+| LLM Classifier | 16 | – | 4 | $0.0152 | 77% cheaper |
+| Baseline (Sol Only) | – | – | 20 | $0.0633 | – |
 
-The bulk tickets are routine requests (invoices, payment methods, order tracking, refund policy), so the occasional Sol pick on these is the judge being cautious, not a ticket that needs Sol.
+The LLM Classifier sent exactly the 4 high-risk tickets to Sol and every routine ticket to Nano. The 3-Tier Custom route varies much more between runs (in this run it sent most routine tickets to Super and several to Sol), because its prompt describes complexity tiers rather than specific risks; see [Changing the routing config](#changing-the-routing-config).
+
+The **How it works** tab (`/how-it-works`) explains the flow and the three strategies for an audience. It shows the judge prompts and route config read live from the local `switchyard.toml`, and traces the last ticket triaged on the Demo tab step by step. The traced cost covers the answering model only: Switchyard's reported token usage does not include the judge call.
 
 ## Changing the routing config
 
@@ -197,6 +202,9 @@ aws lambda delete-function-url-config --function-name switchyard-demo-proxy --re
 | [`lib/switchyard/client.ts`](./lib/switchyard/client.ts) | Invokes the Lambda through the OpenAI SDK and turns failures into readable errors |
 | [`app/page.tsx`](./app/page.tsx) | Single-ticket demo UI with sample tickets |
 | [`app/bulk/page.tsx`](./app/bulk/page.tsx) | Bulk triage UI with cost comparison |
+| [`app/how-it-works/page.tsx`](./app/how-it-works/page.tsx) | "How it works" tab: flow diagram, strategies from `switchyard.toml`, last-ticket trace, routing modes |
+| [`app/api/tickets/route.ts`](./app/api/tickets/route.ts) | Picks the bulk view's 20 tickets: a mix of Bitext buckets plus the high-risk tickets |
+| [`data/escalation-tickets.json`](./data/escalation-tickets.json) | Four hand-written high-risk tickets for the bulk view (not from Bitext) |
 | [`data/tickets.json`](./data/tickets.json) | Tickets for the bulk view: the customer messages from the Bitext customer support dataset, with a subject per intent and sample values for its `{{placeholders}}` (CDLA-Sharing-1.0, see [`NOTICE`](./NOTICE)) |
 
 ## Bedrock Mantle notes
@@ -210,4 +218,4 @@ aws lambda delete-function-url-config --function-name switchyard-demo-proxy --re
 
 ## License
 
-The code in this repository is licensed under the [Apache License 2.0](./LICENSE). The ticket data in `data/tickets.json` is from the Bitext customer support dataset and is licensed under CDLA-Sharing-1.0; see [`NOTICE`](./NOTICE).
+The code in this repository is licensed under the [Apache License 2.0](./LICENSE). The ticket data in `data/tickets.json` is from the Bitext customer support dataset and is licensed under CDLA-Sharing-1.0; see [`NOTICE`](./NOTICE). The hand-written tickets in `data/escalation-tickets.json` are part of this repository and covered by the Apache License 2.0.

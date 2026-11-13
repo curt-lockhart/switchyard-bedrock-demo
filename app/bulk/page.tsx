@@ -164,6 +164,10 @@ export default function BulkPage() {
               className="px-3 py-1.5 text-sm rounded bg-gray-800 text-gray-200">
               Bulk
             </Link>
+            <Link href="/how-it-works"
+              className="px-3 py-1.5 text-sm rounded text-gray-500 hover:text-gray-300 transition-colors">
+              How it works
+            </Link>
           </nav>
         </div>
       </header>
