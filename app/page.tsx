@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react";
 import Link from "next/link";
+import { saveLastTicket } from "@/lib/lastTicket";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -19,13 +20,19 @@ interface TriageResult {
   modelUsed: string;
   routeUsed: string;
   latencyMs: number;
-  estimatedCostUsd: number;
+  estimatedCostUsd: number; // answer + judge (estimated)
+  answerCostUsd?: number;
+  judge?: { model: string; inputTokens: number; outputTokens: number; costUsd: number } | null;
+  solOnlyCostUsd?: number;
+  inputTokens?: number;
+  outputTokens?: number;
 }
 
 interface SessionStats {
   total: number;
   byModel: Record<string, number>;
   totalCostUsd: number;
+  totalSolOnlyUsd: number;
   totalLatencyMs: number;
 }
 
@@ -35,12 +42,12 @@ const ROUTES = [
   {
     id: "support-triage-classifier",
     label: "LLM Classifier",
-    description: "Switchyard uses Nano to score the ticket, then routes to Nano (simple) or Sol (complex) — one call from your app",
+    description: "Nemotron Super judges the ticket: routine goes to Nano, risky (fraud, data loss, legal, money at risk, or an enterprise customer who is blocked) goes to Sol — one call from your app",
   },
   {
     id: "support-triage-3tier",
     label: "3-Tier Custom",
-    description: "Nano judges the ticket and picks Nano / Super / Sol based on complexity — three models, one call from your app",
+    description: "Nemotron Super judges the ticket by rules: questions go to Nano, blocked or broken to Super, risky or enterprise-blocked to Sol — three models, one call from your app",
   },
   {
     id: "baseline",
@@ -70,6 +77,13 @@ const SAMPLE_TICKETS = [
     subject: "Charged twice this month",
     body: "I noticed two charges for my subscription this month — one on the 1st and another on the 5th. Invoice number INV-8832. I need the duplicate refunded as soon as possible.",
     customerTier: "pro",
+  },
+  {
+    id: "s6",
+    label: "Can't log in (try the tier)",
+    subject: "Can't log in to my account",
+    body: "I forgot my password and the reset email never arrives, so I can't log in to my account. I've checked my spam folder and tried twice.",
+    customerTier: "standard",
   },
   {
     id: "s4",
@@ -132,6 +146,7 @@ export default function DemoPage() {
     total: 0,
     byModel: {},
     totalCostUsd: 0,
+    totalSolOnlyUsd: 0,
     totalLatencyMs: 0,
   });
 
@@ -186,6 +201,13 @@ export default function DemoPage() {
           if (event === "result") {
             const r = data as TriageResult;
             setResult(r);
+            saveLastTicket({
+              at: new Date().toISOString(), subject, body, customerTier,
+              route: selectedRoute, modelUsed: r.modelUsed, latencyMs: r.latencyMs,
+              estimatedCostUsd: r.estimatedCostUsd, answerCostUsd: r.answerCostUsd,
+              judge: r.judge, solOnlyCostUsd: r.solOnlyCostUsd, inputTokens: r.inputTokens,
+              outputTokens: r.outputTokens, decision: r.decision,
+            });
             setStats((prev) => ({
               total: prev.total + 1,
               byModel: {
@@ -193,6 +215,7 @@ export default function DemoPage() {
                 [r.modelUsed]: (prev.byModel[r.modelUsed] ?? 0) + 1,
               },
               totalCostUsd: prev.totalCostUsd + r.estimatedCostUsd,
+              totalSolOnlyUsd: prev.totalSolOnlyUsd + (r.solOnlyCostUsd ?? r.estimatedCostUsd),
               totalLatencyMs: prev.totalLatencyMs + r.latencyMs,
             }));
           }
@@ -229,6 +252,8 @@ export default function DemoPage() {
           <nav className="ml-6 flex gap-1">
             <Link href="/" className="px-3 py-1.5 text-sm rounded bg-gray-800 text-gray-200">Demo</Link>
             <Link href="/bulk" className="px-3 py-1.5 text-sm rounded text-gray-500 hover:text-gray-300 transition-colors">Bulk</Link>
+            <Link href="/last-ticket" className="px-3 py-1.5 text-sm rounded text-gray-500 hover:text-gray-300 transition-colors">Last ticket</Link>
+            <Link href="/how-it-works" className="px-3 py-1.5 text-sm rounded text-gray-500 hover:text-gray-300 transition-colors">How it works</Link>
           </nav>
           <div className="ml-auto flex items-center gap-2 text-xs">
             <span className="text-gray-600">Your app sends one request →</span>
@@ -328,6 +353,9 @@ export default function DemoPage() {
                   <option value="pro">Pro</option>
                   <option value="enterprise">Enterprise</option>
                 </select>
+                <p className="mt-1.5 text-xs text-gray-600">
+                  Routing rule: an enterprise customer who can&apos;t work or use the product goes to Sol. The tier alone never escalates a routine question.
+                </p>
               </div>
 
               <button
@@ -434,9 +462,15 @@ export default function DemoPage() {
                 )}
 
                 {/* Cost / latency */}
-                <div className="flex items-center gap-4 text-xs text-gray-500 pt-1">
+                <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500 pt-1">
                   <span>⏱ {(result.latencyMs / 1000).toFixed(2)}s</span>
-                  <span>💰 ${result.estimatedCostUsd.toFixed(7)}</span>
+                  <span>💰 ${result.estimatedCostUsd.toFixed(6)}</span>
+                  {result.judge && (
+                    <span className="text-gray-600">
+                      answer ${(result.answerCostUsd ?? 0).toFixed(6)} + judge ~${result.judge.costUsd.toFixed(6)}
+                    </span>
+                  )}
+                  <Link href="/last-ticket" className="ml-auto text-gray-400 hover:text-gray-200">See how it was routed →</Link>
                 </div>
               </div>
             )}
@@ -461,13 +495,12 @@ export default function DemoPage() {
             <span className="ml-auto">
               avg latency {(stats.totalLatencyMs / stats.total / 1000).toFixed(2)}s
             </span>
-            <span>total cost ${stats.totalCostUsd.toFixed(6)}</span>
-            {stats.byModel["nvidia.nemotron-nano-3-30b"] && (
-              <span className="text-[#76b900]">
-                ~{(
-                  (1 - stats.totalCostUsd /
-                    (stats.total * 0.003)) * 100
-                ).toFixed(0)}% cheaper than GPT-only baseline
+            <span>total cost ${stats.totalCostUsd.toFixed(6)} (incl. judge)</span>
+            {stats.totalSolOnlyUsd > 0 && (
+              <span className="text-gray-300">
+                {stats.totalCostUsd <= stats.totalSolOnlyUsd
+                  ? `~${Math.round((1 - stats.totalCostUsd / stats.totalSolOnlyUsd) * 100)}% cheaper than Sol only`
+                  : `~${Math.round((stats.totalCostUsd / stats.totalSolOnlyUsd - 1) * 100)}% more than Sol only`}
               </span>
             )}
           </div>

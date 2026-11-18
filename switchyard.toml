@@ -29,7 +29,8 @@ llm_client = "bedrock-openai"
 
 # ─── Routes ───────────────────────────────────────────────────────────────────
 
-# Route 1: LLM Classifier — Nano judges upfront, routes to Nano or Sol
+# Route 1: LLM Classifier — Super judges upfront by rules, routes to Nano or Sol.
+# The judge is Super, not Nano: Nano did not follow the enterprise AND blocked rule reliably.
 [routes.support-triage-classifier]
 id                = "support-triage-classifier"
 type              = "llm_classifier"
@@ -37,12 +38,14 @@ mode              = "custom"
 default_target    = "sol"
 classify_trigger  = "user_turn"
 prompt            = """
-Route this support ticket. Answer nano unless the customer reports one of these, then answer sol:
-- fraud or a security problem: account takeover, charges or changes they did not make, exposed personal data
-- data loss or an outage
-- a legal threat, a chargeback, or an urgent deadline with money at risk
+Route this support ticket. Answer sol if any of these rules applies, otherwise answer nano.
 
-A double charge on the customer's own order is routine billing: answer nano.
+1. Customer Tier is enterprise AND the customer is blocked: they cannot log in, cannot work or cannot use the product.
+2. Fraud or a security problem: account takeover, charges or changes they did not make, exposed personal data.
+3. Data loss or an outage.
+4. A legal threat, a chargeback, or an urgent deadline with money at risk.
+
+Not sol: a double charge on the customer's own order (routine billing), or a routine question from any Customer Tier.
 
 Return JSON matching the response schema supplied with the request.
 """
@@ -68,7 +71,7 @@ response_schema   = '''
 '''
 
 [routes.support-triage-classifier.models]
-judge = ["nano"]
+judge = ["super"]
 nano  = ["nano"]
 sol   = ["sol"]
 any   = ["nano", "sol"]
@@ -77,7 +80,7 @@ any   = ["nano", "sol"]
 type     = "target_selector"
 selector = "/decision/target"
 
-# Route 2: Custom 3-tier — Nano judges upfront, routes to Nano / Super / Sol
+# Route 2: Custom 3-tier — Super judges upfront by rules, routes to Nano / Super / Sol
 [routes.support-triage-3tier]
 id                = "support-triage-3tier"
 type              = "llm_classifier"
@@ -85,11 +88,14 @@ mode              = "custom"
 default_target    = "sol"
 classify_trigger  = "user_turn"
 prompt            = """
-You are a support ticket routing agent. Based on the complexity and urgency of the support ticket, choose the most appropriate model tier.
+Route this support ticket. Check the rules in order and use the first one that applies.
 
-- nano: simple, routine requests (password resets, account info lookups, basic how-to questions, status checks)
-- super: moderate complexity (billing disputes, multi-step troubleshooting, policy questions, account changes)
-- sol: high complexity or high urgency (security incidents, data loss, critical system failures, legal/compliance issues, frustrated VIP customers)
+1. sol: Customer Tier is enterprise AND the customer is blocked (cannot log in, cannot work or cannot use the product).
+2. sol: fraud or a security problem (account takeover, charges or changes they did not make, exposed personal data), data loss or an outage, a legal threat or a chargeback, or an urgent deadline with money at risk.
+3. super: the customer is blocked or something went wrong that needs investigating: they cannot log in or use the product, a payment or order failed or is wrong, a billing dispute, or troubleshooting that takes several steps.
+4. nano: everything else, including questions about policies, prices, payment methods, delivery options, invoices or order status, and simple changes to an account, order or address.
+
+Customer Tier only matters for rule 1.
 
 Return JSON matching the response schema supplied with the request.
 """
@@ -115,7 +121,7 @@ response_schema   = '''
 '''
 
 [routes.support-triage-3tier.models]
-judge = ["nano"]
+judge = ["super"]
 nano  = ["nano"]
 super = ["super"]
 sol   = ["sol"]

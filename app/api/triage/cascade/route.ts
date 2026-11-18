@@ -48,9 +48,8 @@ export async function POST(req: NextRequest) {
       };
 
       try {
-        const { decision, modelUsed, routeUsed, latencyMs, estimatedCostUsd } =
-          await triageTicket(ticket, ticket.route);
-        send("result", { decision, modelUsed, routeUsed, latencyMs, estimatedCostUsd });
+        const result = await triageTicket(ticket, ticket.route);
+        send("result", result);
       } catch (err) {
         send("error", { message: err instanceof Error ? err.message : String(err) });
       } finally {

@@ -1,0 +1,26 @@
+[
+  {
+    "id": "ticket-e01-x",
+    "subject": "Someone else is using my account",
+    "body": "I got an email that my password and phone number were changed, but that wasn't me. Now there are three orders for laptops on my account shipping to an address I don't recognise. Please stop them and lock my account.",
+    "customerTier": "pro"
+  },
+  {
+    "id": "ticket-e02-x",
+    "subject": "All our saved data is gone since this morning",
+    "body": "Since your update this morning every project our team saved in the last six months has disappeared, and the dashboard just shows an error. Forty people can't work. Is our data recoverable?",
+    "customerTier": "enterprise"
+  },
+  {
+    "id": "ticket-e03-x",
+    "subject": "Charged three times for a cancelled order",
+    "body": "You charged my card $1,240 three times for an order I cancelled two weeks ago. Support keeps closing my tickets. If this isn't refunded by Friday I'm filing a chargeback and my lawyer will contact you.",
+    "customerTier": "standard"
+  },
+  {
+    "id": "ticket-e04-x",
+    "subject": "Payroll export failed, salaries due tomorrow",
+    "body": "The payroll export to our bank has failed twice tonight with an unknown error. Salaries for 200 employees have to reach the bank by 9am tomorrow or we pay late fees. We need someone on this now.",
+    "customerTier": "enterprise"
+  }
+]

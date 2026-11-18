@@ -12,3 +12,6 @@ responses are not included.
 The dataset and data/tickets.json are licensed under the Community Data License
 Agreement – Sharing, Version 1.0 (CDLA-Sharing-1.0):
 https://cdla.dev/sharing-1-0/
+
+data/escalation-tickets.json is not derived from the Bitext dataset. Its tickets
+were written for this demo.

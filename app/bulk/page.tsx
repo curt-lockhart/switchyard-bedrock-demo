@@ -14,7 +14,8 @@ interface BulkResult {
   modelUsed?: string;
   routeUsed?: string;
   latencyMs?: number;
-  estimatedCostUsd?: number;
+  estimatedCostUsd?: number; // answer + judge (estimated)
+  solOnlyCostUsd?: number;
   inputTokens?: number;
   outputTokens?: number;
   decision?: {
@@ -135,11 +136,8 @@ export default function BulkPage() {
     : 0;
 
   // What this batch would have cost if every ticket went to Sol
-  const solCost = success.reduce((s, r) => {
-    const input  = (r.inputTokens  ?? 0) * 4.40  / 1_000_000;
-    const output = (r.outputTokens ?? 0) * 22.00 / 1_000_000;
-    return s + input + output;
-  }, 0);
+  // Each ticket's answer tokens priced at Sol rates (computed by the API).
+  const solCost = success.reduce((s, r) => s + (r.solOnlyCostUsd ?? 0), 0);
   const savings = solCost > 0 ? ((solCost - totalCost) / solCost) * 100 : 0;
 
   return (
@@ -163,6 +161,14 @@ export default function BulkPage() {
             <Link href="/bulk"
               className="px-3 py-1.5 text-sm rounded bg-gray-800 text-gray-200">
               Bulk
+            </Link>
+            <Link href="/last-ticket"
+              className="px-3 py-1.5 text-sm rounded text-gray-500 hover:text-gray-300 transition-colors">
+              Last ticket
+            </Link>
+            <Link href="/how-it-works"
+              className="px-3 py-1.5 text-sm rounded text-gray-500 hover:text-gray-300 transition-colors">
+              How it works
             </Link>
           </nav>
         </div>
@@ -244,7 +250,7 @@ export default function BulkPage() {
             </div>
 
             <div className="bg-[#111] border border-gray-800 rounded-lg p-4">
-              <p className="text-xs text-gray-500 mb-1">Total cost</p>
+              <p className="text-xs text-gray-500 mb-1">Total cost (incl. judge)</p>
               <p className="text-2xl font-semibold text-gray-100">
                 ${totalCost.toFixed(4)}
               </p>
