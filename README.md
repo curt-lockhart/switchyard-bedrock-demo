@@ -143,7 +143,7 @@ The LLM Classifier sent exactly the 4 high-risk tickets to Sol. 3-Tier sends the
 
 ### How it works and Last ticket tabs
 
-- **How it works** (`/how-it-works`) explains the setup for an audience: model prices (including Super as the judge), the flow diagram, the customer tier rule, one card per strategy with its judge prompt and route config read live from the local `switchyard.toml`, and why the demo uses custom mode.
+- **How it works** (`/how-it-works`) explains the setup for an audience, in this order: model prices (including Super as the judge), the flow diagram, a simplified overview of Switchyard's main routing strategies (with a link to the [routing strategies overview](https://github.com/NVIDIA-NeMo/Switchyard/blob/21075c6652152dac88a5fbc6b878ca37d7617c1c/docs/routing_algorithms/overview.md)), the demo's three routes with their judge prompts and route config read live from the local `switchyard.toml`, why the demo uses a custom classifier, and the customer tier rule.
 - **Last ticket** (`/last-ticket`) shows the most recent ticket from the Demo tab: the flow diagram with its path highlighted, the steps in prose, and two cost charts: this ticket (answer + judge vs Sol only) and the Demo session so far. Data is kept in the browser's localStorage; the session totals can be reset on the tab.
 
 ### Cost figures

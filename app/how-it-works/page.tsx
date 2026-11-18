@@ -182,28 +182,97 @@ function StrategyCard({ route, targets }: { route: RouteConfig; targets: Record<
   );
 }
 
+const ROUTING_DOCS =
+  "https://github.com/NVIDIA-NeMo/Switchyard/blob/21075c6652152dac88a5fbc6b878ca37d7617c1c/docs/routing_algorithms/overview.md";
+
+// The main routing choices in Switchyard, simplified for a demo audience.
+// Source: docs/routing_algorithms/overview.md at the commit linked above.
+const STRATEGY_GROUPS = [
+  {
+    title: "Ask a judge first",
+    blurb: "A small model reads the request and picks who answers. Works for chat and support traffic.",
+    items: [
+      { name: "Task", config: 'llm_classifier · mode "capability"', what: "Built-in question: can the cheaper model do this whole task? If not, the stronger one answers.", used: false },
+      { name: "Custom", config: 'llm_classifier · mode "custom"', what: "You write the judge's question and the allowed answers, with as many tiers as you like.", used: true },
+      { name: "Escalation", config: 'llm_classifier · mode "escalation"', what: "The cheaper model answers first; a judge reviews its turns and switches up after repeated failures.", used: false },
+    ],
+  },
+  {
+    title: "Watch the agent work",
+    blurb: "No judge call. Routes on how a coding agent's tool calls are going, turn by turn.",
+    items: [
+      { name: "Auto", config: 'type "auto"', what: "The recommended preset: start cheap, switch to the stronger model when errors pile up. No settings to tune.", used: false },
+      { name: "Execution", config: 'type "stage_router"', what: "The same idea as Auto with the knobs exposed, such as how confident it must be before switching.", used: false },
+    ],
+  },
+  {
+    title: "Simple rules",
+    blurb: "No decision per request. Useful as a baseline or for A/B tests.",
+    items: [
+      { name: "Fixed", config: 'type "passthrough"', what: "Always the same model.", used: true },
+      { name: "Random", config: 'type "random"', what: "A weighted split, for example 30% to one model and 70% to the other.", used: false },
+    ],
+  },
+];
+
+function AvailableStrategies() {
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {STRATEGY_GROUPS.map((g) => (
+          <div key={g.title} className="rounded-xl border border-gray-800 bg-[#111] p-5 space-y-4">
+            <div>
+              <p className="text-sm font-semibold text-gray-100">{g.title}</p>
+              <p className="text-xs text-gray-500 mt-1">{g.blurb}</p>
+            </div>
+            <ul className="space-y-3">
+              {g.items.map((s) => (
+                <li key={s.name} className={`rounded-lg border px-3 py-2.5 ${s.used ? "border-[#76b900]/40 bg-[#76b900]/5" : "border-gray-800"}`}>
+                  <p className="flex items-center gap-2 text-sm text-gray-200">
+                    {s.name}
+                    {s.used && <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#76b900]/20 text-[#76b900]">used in this demo</span>}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">{s.what}</p>
+                  <p className="text-[11px] text-gray-600 mt-1 font-mono">{s.config}</p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+      <p className="text-xs text-gray-500">
+        Switchyard has more strategies for agent workflows, such as plan-then-execute and a reviewer that checks an
+        agent&apos;s work. The docs also cover which one to start with:{" "}
+        <a href={ROUTING_DOCS} target="_blank" rel="noreferrer" className="text-gray-300 hover:underline">
+          Switchyard routing strategies overview ↗
+        </a>
+      </p>
+    </div>
+  );
+}
+
 function ModesTable() {
   const rows = [
     {
-      name: "LLM classifier, custom mode",
+      name: "Custom",
       used: true,
       config: 'type = "llm_classifier"\nmode = "custom"',
       judges: "Whatever your prompt asks; you also define the allowed answers (JSON schema) and which answer maps to which model.",
-      fit: "Used here. The question for support tickets is “is this risky or complex?”, which is a business rule you want to write yourself.",
+      fit: "Used here. The question for support tickets is “is this risky, or is this customer blocked?”, which is a business rule you want to write yourself.",
     },
     {
-      name: "LLM classifier, capability mode",
+      name: "Task",
       used: false,
       config: 'type = "llm_classifier"\nmode = "capability"',
-      judges: "“Can the weak model complete this whole task?” The judge must return a fixed verdict (p_solve, capability boundary, rule, crux) that Switchyard compares with thresholds.",
-      fit: "Built for agentic tasks, and only two destinations (weak/strong). A security breach is easy to answer but high-stakes; capability mode does not ask about stakes.",
+      judges: "“Can the weaker model complete this whole task?” The judge returns a fixed verdict that Switchyard compares with thresholds.",
+      fit: "Answers a different question, and has only two destinations. A security breach is easy to answer but high-stakes; capability mode does not ask about stakes.",
     },
     {
-      name: "Stage router",
+      name: "Auto / Execution",
       used: false,
-      config: 'type = "stage_router"',
-      judges: "Doesn’t read the message. Scores the agent’s recent tool calls: errors and spinning push to the capable model, steady edits to the efficient one.",
-      fit: "A support ticket is one message with no tool calls, so there is nothing to score and every ticket lands on the default tier.",
+      config: 'type = "auto"\ntype = "stage_router"',
+      judges: "Doesn’t read the message. Scores the agent’s recent tool calls: errors and spinning push to the stronger model, steady progress to the cheaper one.",
+      fit: "A support ticket is one message with no tool calls, so there is nothing to score and every ticket lands on the cheaper model.",
     },
   ];
   return (
@@ -262,6 +331,33 @@ export default function HowItWorksPage() {
         </Section>
 
         <Section
+          title="Routing strategies in Switchyard"
+          subtitle="The main choices, grouped by what they look at to pick a model. Each is one route block in switchyard.toml."
+        >
+          <AvailableStrategies />
+        </Section>
+
+        <Section
+          title="What we implemented for this demo"
+          subtitle="Two custom classifiers and a fixed baseline. Switching strategy in the UI only changes the route name the app sends."
+        >
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {config.routes.map((r) => <StrategyCard key={r.id} route={r} targets={config.targets} />)}
+          </div>
+          <p className="text-xs text-gray-600">
+            Shown from the local <code>{config.path}</code> (last changed {new Date(config.modifiedAt).toLocaleString()}). The
+            Lambda runs the copy from its last deploy; after editing, run <code>./scripts/lambda-deploy.sh</code>.
+          </p>
+        </Section>
+
+        <Section
+          title="Why a custom classifier?"
+          subtitle="Support tickets are single messages where the stakes matter more than the difficulty, so the demo uses the strategy that lets you write that rule."
+        >
+          <ModesTable />
+        </Section>
+
+        <Section
           title="Customer tier is part of the rule, not a shortcut"
           subtitle="The tier is sent to the judge as one line of the ticket. The prompts say exactly when it matters."
         >
@@ -282,26 +378,6 @@ export default function HowItWorksPage() {
             Enterprise, and look at each on the{" "}
             <Link href="/last-ticket" className="text-gray-400 hover:underline">Last ticket</Link> tab.
           </p>
-        </Section>
-
-        <Section
-          title="The three routing strategies"
-          subtitle="Each one is a block in switchyard.toml. Switching strategy in the UI only changes the route name the app sends."
-        >
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            {config.routes.map((r) => <StrategyCard key={r.id} route={r} targets={config.targets} />)}
-          </div>
-          <p className="text-xs text-gray-600">
-            Shown from the local <code>{config.path}</code> (last changed {new Date(config.modifiedAt).toLocaleString()}). The
-            Lambda runs the copy from its last deploy; after editing, run <code>./scripts/lambda-deploy.sh</code>.
-          </p>
-        </Section>
-
-        <Section
-          title="Why a custom classifier?"
-          subtitle="Switchyard offers several routing algorithms. This demo uses the one that lets you write the routing rule."
-        >
-          <ModesTable />
         </Section>
       </main>
     </div>
