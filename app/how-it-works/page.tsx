@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { loadSwitchyardConfig, type RouteConfig } from "@/lib/switchyard/config";
 import { COST_PER_1M } from "@/lib/switchyard/client";
-import LastTicketTrace from "./LastTicketTrace";
+import SiteHeader from "@/app/components/SiteHeader";
 
 // Read switchyard.toml on every request so the page reflects local edits.
 export const dynamic = "force-dynamic";
@@ -32,26 +32,6 @@ const STORY: Record<string, { label: string; idea: string; why: string }> = {
     why: "Every ticket goes straight to the most capable model. This is what you would pay without Switchyard.",
   },
 };
-
-function Header() {
-  return (
-    <header className="border-b border-gray-800 bg-[#0f0f0f]">
-      <div className="max-w-7xl mx-auto px-6 py-4 flex items-center gap-3">
-        <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded-full bg-[#76b900]" />
-          <span className="font-semibold text-sm tracking-wide text-gray-200">NVIDIA Switchyard</span>
-        </div>
-        <span className="text-gray-600 text-sm">×</span>
-        <span className="text-gray-400 text-sm">Amazon Bedrock</span>
-        <nav className="ml-6 flex gap-1">
-          <Link href="/" className="px-3 py-1.5 text-sm rounded text-gray-500 hover:text-gray-300 transition-colors">Demo</Link>
-          <Link href="/bulk" className="px-3 py-1.5 text-sm rounded text-gray-500 hover:text-gray-300 transition-colors">Bulk</Link>
-          <Link href="/how-it-works" className="px-3 py-1.5 text-sm rounded bg-gray-800 text-gray-200">How it works</Link>
-        </nav>
-      </div>
-    </header>
-  );
-}
 
 function Section({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
@@ -117,23 +97,32 @@ function FlowDiagram({ judge }: { judge: string }) {
   );
 }
 
-function CostTiles() {
+function CostTiles({ judge }: { judge: string }) {
   const nano = COST_PER_1M["nvidia.nemotron-nano-3-30b"];
+  const sup = COST_PER_1M["nvidia.nemotron-super-3-120b"];
   const sol = COST_PER_1M["openai.gpt-5.6-sol"];
   const tiles = [
-    { label: "Nano, per 1M tokens", value: `$${nano.input} / $${nano.output}`, sub: "input / output", cls: "text-[#76b900]" },
-    { label: "Sol, per 1M tokens", value: `$${sol.input} / $${sol.output}`, sub: "input / output", cls: "text-purple-400" },
+    { label: "Nano, per 1M tokens", value: `$${nano.input} / $${nano.output}`, sub: "input / output · routine tickets", cls: "text-[#76b900]" },
+    { label: "Super, per 1M tokens", value: `$${sup.input} / $${sup.output}`, sub: `input / output · mid tier${judge === "super" ? " and the judge" : ""}`, cls: "text-blue-400" },
+    { label: "Sol, per 1M tokens", value: `$${sol.input} / $${sol.output}`, sub: "input / output · high-stakes tickets", cls: "text-purple-400" },
     { label: "Sol costs", value: `${Math.round(sol.output / nano.output)}×`, sub: "Nano's price per output token", cls: "text-gray-100" },
   ];
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-      {tiles.map((t) => (
-        <div key={t.label} className="rounded-xl border border-gray-800 bg-[#111] p-4">
-          <p className="text-xs text-gray-500">{t.label}</p>
-          <p className={`text-2xl font-semibold mt-1 ${t.cls}`}>{t.value}</p>
-          <p className="text-xs text-gray-600 mt-0.5">{t.sub}</p>
-        </div>
-      ))}
+    <div className="space-y-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {tiles.map((t) => (
+          <div key={t.label} className="rounded-xl border border-gray-800 bg-[#111] p-4">
+            <p className="text-xs text-gray-500">{t.label}</p>
+            <p className={`text-2xl font-semibold mt-1 ${t.cls}`}>{t.value}</p>
+            <p className="text-xs text-gray-600 mt-0.5">{t.sub}</p>
+          </div>
+        ))}
+      </div>
+      <p className="text-xs text-gray-500">
+        Every routed ticket also makes one small judge call to {tier(judge)?.model ?? judge}: about 400 input and 20 output
+        tokens, roughly $0.00008. Switchyard doesn&apos;t report that call&apos;s usage, so the app estimates it and includes
+        it in every cost on the Demo, Bulk and Last ticket tabs.
+      </p>
     </div>
   );
 }
@@ -246,13 +235,12 @@ function ModesTable() {
 
 export default function HowItWorksPage() {
   const config = loadSwitchyardConfig();
-  // The judge shown in the flow diagram: the first classifier route's judge.
+  // The judge shown in the flow diagram and pricing note: the first classifier route's judge.
   const judge = config.routes.find((r) => r.models.judge)?.models.judge?.[0] ?? "judge";
-  const routesForTrace = config.routes.map(({ id, type, answers, models, passthroughTarget }) => ({ id, type, answers, models, passthroughTarget }));
 
   return (
     <div className="min-h-screen flex flex-col">
-      <Header />
+      <SiteHeader active="/how-it-works" />
       <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-10 space-y-12">
         <div className="max-w-3xl">
           <h1 className="text-2xl font-semibold text-gray-100">One request in, the right model out</h1>
@@ -263,16 +251,14 @@ export default function HowItWorksPage() {
           </p>
         </div>
 
-        <CostTiles />
+        <CostTiles judge={judge} />
 
         <Section title="How a ticket flows" subtitle="The app never picks a model. It names a route, and Switchyard does the rest.">
           <FlowDiagram judge={judge} />
-        </Section>
-
-        <Section title="What happened to your last ticket" subtitle="Step by step, for the most recent ticket on the Demo tab.">
-          <div className="rounded-xl border border-gray-800 bg-[#111] p-5">
-            <LastTicketTrace routes={routesForTrace} targets={config.targets} />
-          </div>
+          <p className="text-xs text-gray-500">
+            To see this path for a real ticket, triage one on the Demo tab and open{" "}
+            <Link href="/last-ticket" className="text-gray-300 hover:underline">Last ticket</Link>.
+          </p>
         </Section>
 
         <Section
@@ -292,7 +278,9 @@ export default function HowItWorksPage() {
             ))}
           </div>
           <p className="text-xs text-gray-600">
-            Try it on the Demo tab with the &ldquo;Can&apos;t log in&rdquo; sample: run it as Standard, then switch the tier to Enterprise.
+            Try it on the Demo tab with the &ldquo;Can&apos;t log in&rdquo; sample: run it as Standard, then switch the tier to
+            Enterprise, and look at each on the{" "}
+            <Link href="/last-ticket" className="text-gray-400 hover:underline">Last ticket</Link> tab.
           </p>
         </Section>
 

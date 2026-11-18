@@ -131,17 +131,28 @@ The judge makes each routing decision fresh, so a borderline ticket can occasion
 
 The bulk view's 20 tickets are 16 routine Bitext tickets, dealt in turn from its simple, medium and complex intents, plus 4 hand-written high-risk tickets at positions 3, 8, 13 and 18: an account takeover, data loss after an update, a chargeback and legal threat, and a payroll deadline with money at risk ([`data/escalation-tickets.json`](./data/escalation-tickets.json)). Bitext has almost no tickets like these, so without them every route looks the same. A 5-ticket run includes 1 of them, a 10-ticket run 2.
 
-In a 20-ticket bulk run:
+In a 20-ticket bulk run (costs include the estimated judge calls, see [Cost figures](#cost-figures)):
 
-| Route | Nano | Super | Sol | Total cost | vs Sol only |
-|---|---|---|---|---|---|
-| LLM Classifier | 16 | – | 4 | $0.0153 | 79% cheaper |
-| 3-Tier Custom | 14 | 2 | 4 | $0.0147 | 79% cheaper |
-| Baseline (Sol Only) | – | – | 20 | $0.0674 | – |
+| Route | Nano | Super | Sol | Total cost | of which judge | vs Sol only |
+|---|---|---|---|---|---|---|
+| LLM Classifier | 16 | – | 4 | $0.0174 | $0.0015 | 76% cheaper |
+| 3-Tier Custom | 15 | 2 | 3 | $0.0159 | $0.0018 | 79% cheaper |
+| Baseline (Sol Only) | – | – | 20 | $0.0698 | – | – |
 
-Both classifier routes sent exactly the 4 high-risk tickets to Sol.
+The LLM Classifier sent exactly the 4 high-risk tickets to Sol. 3-Tier sends them to Sol in most runs; in this one it put one on Super.
 
-The **How it works** tab (`/how-it-works`) explains the flow and the three strategies for an audience. It shows the judge prompts and route config read live from the local `switchyard.toml`, and traces the last ticket triaged on the Demo tab step by step. The traced cost covers the answering model only: Switchyard's reported token usage does not include the judge call.
+### How it works and Last ticket tabs
+
+- **How it works** (`/how-it-works`) explains the setup for an audience: model prices (including Super as the judge), the flow diagram, the customer tier rule, one card per strategy with its judge prompt and route config read live from the local `switchyard.toml`, and why the demo uses custom mode.
+- **Last ticket** (`/last-ticket`) shows the most recent ticket from the Demo tab: the flow diagram with its path highlighted, the steps in prose, and two cost charts: this ticket (answer + judge vs Sol only) and the Demo session so far. Data is kept in the browser's localStorage; the session totals can be reset on the tab.
+
+### Cost figures
+
+All costs are estimates from token counts and the on-demand prices in `lib/switchyard/client.ts`.
+
+- **Answer:** the answering model's reported usage.
+- **Judge:** Switchyard does not report the judge call's usage, so the app estimates it: the answering model's input tokens plus the route's judge prompt (about 4 characters per token) plus 10 tokens of schema, and 20 output tokens, at the judge model's price. Direct calls to Nemotron Super with the same prompt and schema used 380–490 input and 19–22 output tokens, about $0.00008 per ticket. For a ticket that goes to Nano this is more than the answer itself, and a ticket that goes to Sol costs slightly more than Sol only.
+- **Sol only:** the same answer tokens priced at Sol rates. It is a comparison, not a separate run; a real Sol run produces somewhat different token counts.
 
 ## Changing the routing config
 
@@ -214,7 +225,8 @@ aws lambda delete-function-url-config --function-name switchyard-demo-proxy --re
 | [`lib/switchyard/client.ts`](./lib/switchyard/client.ts) | Invokes the Lambda through the OpenAI SDK and turns failures into readable errors |
 | [`app/page.tsx`](./app/page.tsx) | Single-ticket demo UI with sample tickets |
 | [`app/bulk/page.tsx`](./app/bulk/page.tsx) | Bulk triage UI with cost comparison |
-| [`app/how-it-works/page.tsx`](./app/how-it-works/page.tsx) | "How it works" tab: flow diagram, strategies from `switchyard.toml`, last-ticket trace, routing modes |
+| [`app/how-it-works/page.tsx`](./app/how-it-works/page.tsx) | "How it works" tab: model prices, flow diagram, customer tier, strategies from `switchyard.toml`, routing modes |
+| [`app/last-ticket/`](./app/last-ticket/) | "Last ticket" tab: highlighted path, step-by-step trace and cost charts for the latest Demo ticket |
 | [`app/api/tickets/route.ts`](./app/api/tickets/route.ts) | Picks the bulk view's 20 tickets: a mix of Bitext buckets plus the high-risk tickets |
 | [`data/escalation-tickets.json`](./data/escalation-tickets.json) | Four hand-written high-risk tickets for the bulk view (not from Bitext) |
 | [`data/tickets.json`](./data/tickets.json) | Tickets for the bulk view: the customer messages from the Bitext customer support dataset, with a subject per intent and sample values for its `{{placeholders}}` (CDLA-Sharing-1.0, see [`NOTICE`](./NOTICE)) |
@@ -227,7 +239,7 @@ aws lambda delete-function-url-config --function-name switchyard-demo-proxy --re
 - **Sol limitations**: does not accept `temperature` or `max_tokens`
 - **Sol pricing**: short context (<272k tokens) $4.40/$22.00, long context (1M) $8.80/$33.00 per 1M tokens
 - **Judge temperature**: with Nano as the judge, setting `temperature = 0` did not make routing more consistent, and one response was not valid JSON. Use the default temperature.
-- **Judge cost**: Switchyard's reported token usage covers the answering model only, so the app's cost figures do not include the judge call.
+- **Judge cost**: Switchyard's reported token usage covers the answering model only. The app adds an estimate for the judge call; see [Cost figures](#cost-figures).
 
 ## License
 

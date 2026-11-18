@@ -20,7 +20,10 @@ interface TriageResult {
   modelUsed: string;
   routeUsed: string;
   latencyMs: number;
-  estimatedCostUsd: number;
+  estimatedCostUsd: number; // answer + judge (estimated)
+  answerCostUsd?: number;
+  judge?: { model: string; inputTokens: number; outputTokens: number; costUsd: number } | null;
+  solOnlyCostUsd?: number;
   inputTokens?: number;
   outputTokens?: number;
 }
@@ -29,6 +32,7 @@ interface SessionStats {
   total: number;
   byModel: Record<string, number>;
   totalCostUsd: number;
+  totalSolOnlyUsd: number;
   totalLatencyMs: number;
 }
 
@@ -142,6 +146,7 @@ export default function DemoPage() {
     total: 0,
     byModel: {},
     totalCostUsd: 0,
+    totalSolOnlyUsd: 0,
     totalLatencyMs: 0,
   });
 
@@ -199,7 +204,8 @@ export default function DemoPage() {
             saveLastTicket({
               at: new Date().toISOString(), subject, body, customerTier,
               route: selectedRoute, modelUsed: r.modelUsed, latencyMs: r.latencyMs,
-              estimatedCostUsd: r.estimatedCostUsd, inputTokens: r.inputTokens,
+              estimatedCostUsd: r.estimatedCostUsd, answerCostUsd: r.answerCostUsd,
+              judge: r.judge, solOnlyCostUsd: r.solOnlyCostUsd, inputTokens: r.inputTokens,
               outputTokens: r.outputTokens, decision: r.decision,
             });
             setStats((prev) => ({
@@ -209,6 +215,7 @@ export default function DemoPage() {
                 [r.modelUsed]: (prev.byModel[r.modelUsed] ?? 0) + 1,
               },
               totalCostUsd: prev.totalCostUsd + r.estimatedCostUsd,
+              totalSolOnlyUsd: prev.totalSolOnlyUsd + (r.solOnlyCostUsd ?? r.estimatedCostUsd),
               totalLatencyMs: prev.totalLatencyMs + r.latencyMs,
             }));
           }
@@ -246,6 +253,7 @@ export default function DemoPage() {
             <Link href="/" className="px-3 py-1.5 text-sm rounded bg-gray-800 text-gray-200">Demo</Link>
             <Link href="/bulk" className="px-3 py-1.5 text-sm rounded text-gray-500 hover:text-gray-300 transition-colors">Bulk</Link>
             <Link href="/how-it-works" className="px-3 py-1.5 text-sm rounded text-gray-500 hover:text-gray-300 transition-colors">How it works</Link>
+            <Link href="/last-ticket" className="px-3 py-1.5 text-sm rounded text-gray-500 hover:text-gray-300 transition-colors">Last ticket</Link>
           </nav>
           <div className="ml-auto flex items-center gap-2 text-xs">
             <span className="text-gray-600">Your app sends one request →</span>
@@ -454,9 +462,15 @@ export default function DemoPage() {
                 )}
 
                 {/* Cost / latency */}
-                <div className="flex items-center gap-4 text-xs text-gray-500 pt-1">
+                <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500 pt-1">
                   <span>⏱ {(result.latencyMs / 1000).toFixed(2)}s</span>
-                  <span>💰 ${result.estimatedCostUsd.toFixed(7)}</span>
+                  <span>💰 ${result.estimatedCostUsd.toFixed(6)}</span>
+                  {result.judge && (
+                    <span className="text-gray-600">
+                      answer ${(result.answerCostUsd ?? 0).toFixed(6)} + judge ~${result.judge.costUsd.toFixed(6)}
+                    </span>
+                  )}
+                  <Link href="/last-ticket" className="ml-auto text-gray-400 hover:text-gray-200">See how it was routed →</Link>
                 </div>
               </div>
             )}
@@ -481,13 +495,12 @@ export default function DemoPage() {
             <span className="ml-auto">
               avg latency {(stats.totalLatencyMs / stats.total / 1000).toFixed(2)}s
             </span>
-            <span>total cost ${stats.totalCostUsd.toFixed(6)}</span>
-            {stats.byModel["nvidia.nemotron-nano-3-30b"] && (
-              <span className="text-[#76b900]">
-                ~{(
-                  (1 - stats.totalCostUsd /
-                    (stats.total * 0.003)) * 100
-                ).toFixed(0)}% cheaper than GPT-only baseline
+            <span>total cost ${stats.totalCostUsd.toFixed(6)} (incl. judge)</span>
+            {stats.totalSolOnlyUsd > 0 && (
+              <span className="text-gray-300">
+                {stats.totalCostUsd <= stats.totalSolOnlyUsd
+                  ? `~${Math.round((1 - stats.totalCostUsd / stats.totalSolOnlyUsd) * 100)}% cheaper than Sol only`
+                  : `~${Math.round((stats.totalCostUsd / stats.totalSolOnlyUsd - 1) * 100)}% more than Sol only`}
               </span>
             )}
           </div>

@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { LambdaClient, InvokeCommand } from "@aws-sdk/client-lambda";
+import { loadSwitchyardConfig } from "./config";
 
 const LAMBDA_FN = process.env.SWITCHYARD_LAMBDA_FN ?? "switchyard-demo-proxy";
 const LAMBDA_REGION = process.env.SWITCHYARD_LAMBDA_REGION ?? "us-east-1";
@@ -116,9 +117,37 @@ export interface TriageWithMeta {
   modelUsed: string;   // actual model Switchyard selected
   routeUsed: string;   // Switchyard route ID
   latencyMs: number;
-  estimatedCostUsd: number;
+  estimatedCostUsd: number;   // answer + judge (estimated)
+  answerCostUsd: number;      // the model that answered, from its reported usage
+  judge: JudgeEstimate | null; // null for routes without a judge (passthrough)
+  solOnlyCostUsd: number;     // the answer's tokens priced at Sol rates (estimate)
   inputTokens: number;
   outputTokens: number;
+}
+
+// Switchyard reports token usage for the answering model only, not for the judge
+// call. The judge sees roughly what the answering model sees plus the route's judge
+// prompt and schema, and replies with ~20 tokens of JSON. Measured on Nemotron Super:
+// 380-490 input / 19-22 output tokens, matching this estimate within a few tokens.
+export interface JudgeEstimate {
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+}
+const JUDGE_OUTPUT_TOKENS = 20;
+const JUDGE_SCHEMA_TOKENS = 10;
+const SOL_MODEL = "openai.gpt-5.6-sol";
+
+function estimateJudge(route: string, answerInputTokens: number): JudgeEstimate | null {
+  let config;
+  try { config = loadSwitchyardConfig(); } catch { return null; }
+  const r = config.routes.find((x) => x.id === route);
+  const judgeTarget = r?.models.judge?.[0];
+  if (!r || r.type !== "llm_classifier" || !judgeTarget) return null;
+  const model = config.targets[judgeTarget] ?? judgeTarget;
+  const inputTokens = answerInputTokens + Math.ceil((r.prompt?.length ?? 0) / 4) + JUDGE_SCHEMA_TOKENS;
+  return { model, inputTokens, outputTokens: JUDGE_OUTPUT_TOKENS, costUsd: estimateCost(model, inputTokens, JUDGE_OUTPUT_TOKENS) };
 }
 
 // Token cost table (USD per 1M tokens, Bedrock on-demand us-east-1)
@@ -207,7 +236,10 @@ Body: ${ticket.body}`;
   const usage = response.usage ?? { prompt_tokens: 0, completion_tokens: 0 };
   const inputTokens = usage.prompt_tokens;
   const outputTokens = usage.completion_tokens;
-  const estimatedCostUsd = estimateCost(modelUsed, inputTokens, outputTokens);
+  const answerCostUsd = estimateCost(modelUsed, inputTokens, outputTokens);
+  const judge = estimateJudge(route, inputTokens);
+  const estimatedCostUsd = answerCostUsd + (judge?.costUsd ?? 0);
+  const solOnlyCostUsd = estimateCost(SOL_MODEL, inputTokens, outputTokens);
 
   return {
     decision,
@@ -215,6 +247,9 @@ Body: ${ticket.body}`;
     routeUsed: route,
     latencyMs,
     estimatedCostUsd,
+    answerCostUsd,
+    judge,
+    solOnlyCostUsd,
     inputTokens,
     outputTokens,
   };
