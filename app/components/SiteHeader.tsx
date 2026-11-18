@@ -3,8 +3,8 @@ import Link from "next/link";
 const TABS = [
   { href: "/", label: "Demo" },
   { href: "/bulk", label: "Bulk" },
-  { href: "/how-it-works", label: "How it works" },
   { href: "/last-ticket", label: "Last ticket" },
+  { href: "/how-it-works", label: "How it works" },
 ];
 
 export default function SiteHeader({ active }: { active: string }) {

@@ -252,8 +252,8 @@ export default function DemoPage() {
           <nav className="ml-6 flex gap-1">
             <Link href="/" className="px-3 py-1.5 text-sm rounded bg-gray-800 text-gray-200">Demo</Link>
             <Link href="/bulk" className="px-3 py-1.5 text-sm rounded text-gray-500 hover:text-gray-300 transition-colors">Bulk</Link>
-            <Link href="/how-it-works" className="px-3 py-1.5 text-sm rounded text-gray-500 hover:text-gray-300 transition-colors">How it works</Link>
             <Link href="/last-ticket" className="px-3 py-1.5 text-sm rounded text-gray-500 hover:text-gray-300 transition-colors">Last ticket</Link>
+            <Link href="/how-it-works" className="px-3 py-1.5 text-sm rounded text-gray-500 hover:text-gray-300 transition-colors">How it works</Link>
           </nav>
           <div className="ml-auto flex items-center gap-2 text-xs">
             <span className="text-gray-600">Your app sends one request →</span>
