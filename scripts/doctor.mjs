@@ -57,12 +57,28 @@ pass("AWS credentials accepted");
 
 const { State, LastUpdateStatus } = fn.Configuration;
 if (LastUpdateStatus === "InProgress") {
-  fail("Lambda is still applying a deploy, so it may be using the old config or key", "wait a minute and run npm run doctor again");
+  fail("Lambda is still applying a deploy, so it may be using the old config or token", "wait a minute and run npm run doctor again");
 }
 if (State !== "Active" || LastUpdateStatus === "Failed") {
   fail(`Lambda state is ${State}, last update ${LastUpdateStatus}`, "run ./scripts/lambda-deploy.sh");
 }
 pass(`Lambda is ${State}`);
+
+const refreshCmd = "./scripts/setup.sh --refresh-token";
+const expiresAt = fn.Configuration.Environment?.Variables?.BEDROCK_TOKEN_EXPIRES_AT;
+if (!expiresAt) {
+  fail("The Lambda has no Bedrock token expiry recorded, so it was deployed by an older version of the scripts",
+    `run ${refreshCmd}`);
+}
+const hoursLeft = (new Date(expiresAt).getTime() - Date.now()) / 3_600_000;
+if (hoursLeft <= 0) {
+  fail(`The Bedrock token on the Lambda expired at ${expiresAt}`, `run ${refreshCmd}`);
+}
+if (hoursLeft < 3) {
+  console.log(`  ! Bedrock token expires in ${hoursLeft.toFixed(1)} h (${expiresAt}). Before a demo, run ${refreshCmd}`);
+} else {
+  pass(`Bedrock token valid for ${hoursLeft.toFixed(1)} h (until ${expiresAt})`);
+}
 
 const event = {
   version: "2.0",
@@ -94,8 +110,8 @@ if (result.FunctionError) {
     `check the config error in: aws logs tail /aws/lambda/${FN} --region ${REGION} --since 10m`);
 }
 if (payload.statusCode === 401 || payload.statusCode === 403) {
-  fail(`Bedrock rejected the API key (HTTP ${payload.statusCode})`,
-    "run ./scripts/setup.sh --new-key with a long-term Bedrock API key");
+  fail(`Bedrock rejected the token (HTTP ${payload.statusCode}). It may have expired early because the AWS session that signed it ended`,
+    `run ${refreshCmd}`);
 }
 if (payload.statusCode !== 200) {
   fail(`Test request returned HTTP ${payload.statusCode}: ${String(payload.body).slice(0, 300)}`);
